@@ -233,7 +233,7 @@ python main.py
 
 ---
 
-Made with ❤️ for the Muslim community in Kyrgyzstan and Central Asia
+Made with ❤️ for the Muslim community in the World
 
 *Пайдалуу болсо, GitHub'да ⭐ коюңуз!*
 
