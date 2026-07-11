@@ -227,7 +227,17 @@ python main.py
 
 <div align="center">
 
+<<<<<<< HEAD
 Made with ❤️ for the Muslim community in World
+=======
+### 🛠️ Tech Stack
+
+`Python 3.10+` · `PyQt6` · `Aladhan API` · `OpenStreetMap Nominatim` · `Pillow` · `PyInstaller`
+
+---
+
+Made with ❤️ for the Muslim community in the World
+>>>>>>> aa403e1dfb1bf50636d8189df51514eefa5abd73
 
 *Пайдалуу болсо, GitHub'да ⭐ коюңуз!*
 
