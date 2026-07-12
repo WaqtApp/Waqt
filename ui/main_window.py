@@ -50,7 +50,7 @@ sys.path.insert(0, _root)
 sys.path.insert(0, os.path.join(_root, "ui"))
 
 from core.prayer_times import get_prayer_times
-from core.settings import load, save, get_cached_times, save_cached_times
+from core.settings import load, save, get_cached_times, save_cached_times, get_nearest_cached_times
 from overlay import OverlayWidget, OverlayStyleDialog
 from notification import show_prayer_notification, show_pre_prayer_notification
 
@@ -832,6 +832,22 @@ class MainWindow(QWidget):
             self._calendar.retranslate(code)
         if hasattr(self, "_tray"):
             self._tray.update_language(code, T.get(code, T["en"]))
+
+        # ── Retranslate sidebar button labels ─────────────────────────────
+        _key_map = {
+            "settings":    "sidebar_settings",
+            "layout_grid": "sidebar_overlay",
+            "bell":        "sidebar_alerts",
+            "calendar":    "sidebar_calendar",
+            "palette":     "sidebar_themes",
+        }
+        for btn_key, t_key in _key_map.items():
+            if btn := self._sb_btns.get(btn_key):
+                new_label = _t(code, t_key)
+                btn._label = new_label
+                btn.setToolTip(new_label)
+                btn.update()
+
         self._update_header()
         if self._times: self._render()
 

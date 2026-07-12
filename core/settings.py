@@ -118,22 +118,76 @@ def flush(data: dict) -> None:
     save(data)
 
 
-def save_cached_times(data: dict, times: dict) -> None:
-    """Cache today's prayer times for offline use."""
+def save_cached_times(data: dict, times: dict, target_date=None) -> None:
+    """
+    Cache prayer times for a given date (default: today) into a rolling
+    multi-day store, so offline fallback isn't limited to "must have opened
+    the app today". Prayer times drift only ~1-2 min/day, so a cache entry
+    up to a week old is still a reasonable approximation — much better than
+    a hardcoded table for one city.
+    """
     from datetime import date
+    d = (target_date or date.today()).isoformat()
+    cache = data.get("prayer_cache", {})
+    cache[d] = times
+    # Bound growth: keep only the most recent _CACHE_MAX_DAYS entries.
+    if len(cache) > _CACHE_MAX_DAYS:
+        for old_key in sorted(cache.keys())[: len(cache) - _CACHE_MAX_DAYS]:
+            del cache[old_key]
+    data["prayer_cache"] = cache
+    # Keep the old single-day fields too, for anything still reading them.
     data["cached_times"] = times
-    data["cached_date"]  = date.today().isoformat()
+    data["cached_date"]  = d
     save(data)
 
 
+_CACHE_MAX_DAYS = 14   # keep up to 2 weeks on disk; we only ever *use* the last 7
+
+
 def get_cached_times(data: dict) -> dict | None:
-    """Return cached times if they are from today, else None."""
+    """Return cached times only if they are from today (strict — kept for
+    call sites that specifically want 'today or nothing')."""
     from datetime import date
     cached      = data.get("cached_times")
     cached_date = data.get("cached_date")
     if cached and cached_date == date.today().isoformat():
         return cached
     return None
+
+
+def get_nearest_cached_times(data: dict, max_age_days: int = 7):
+    """
+    Return (times, age_days) for the cached day closest to today, within
+    max_age_days. Falls back across the rolling cache, not just today —
+    this is what should be used for "no internet" handling.
+    Returns (None, None) if nothing usable is cached.
+    """
+    from datetime import date
+    cache = data.get("prayer_cache", {})
+    if not cache:
+        # Back-compat: maybe only the old single-day field exists.
+        legacy = data.get("cached_times")
+        legacy_date = data.get("cached_date")
+        if legacy and legacy_date:
+            try:
+                age = abs((date.today() - date.fromisoformat(legacy_date)).days)
+                if age <= max_age_days:
+                    return legacy, age
+            except ValueError:
+                pass
+        return None, None
+
+    today = date.today()
+    best_times, best_age = None, None
+    for d_str, times in cache.items():
+        try:
+            d = date.fromisoformat(d_str)
+        except ValueError:
+            continue
+        age = abs((today - d).days)
+        if age <= max_age_days and (best_age is None or age < best_age):
+            best_times, best_age = times, age
+    return best_times, best_age
 
 # ── Autostart (Windows registry) ──────────────────────────────────────────────
 
