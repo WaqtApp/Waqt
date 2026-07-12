@@ -226,10 +226,8 @@ from ui.widgets import (
 )
 
 
-# NOTE: get_autostart()/set_autostart() used to be duplicated here AND in
-# core/settings.py. Removed the copy — settings_panel.py already imports the
-# real implementation from core.settings. One source of truth for the registry
-# key = no risk of the two versions drifting apart.
+# NOTE: get_autostart()/set_autostart() removed — duplicated core.settings'
+# implementation. settings_panel.py already imports the real one from there.
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  SETTINGS PANEL
@@ -279,6 +277,9 @@ class MainWindow(QWidget):
             AppTheme.apply(THEMES[saved_theme], saved_theme)
             self.setStyleSheet(AppTheme.app_stylesheet())
 
+        # Apply saved shape style (minimal/playful — independent of color)
+        AppTheme.apply_style(self._s.get("design_style", "minimal"))
+
         # ── Layout ──
         root = QHBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -319,6 +320,7 @@ class MainWindow(QWidget):
         self._settings.overlay_toggled.connect(self._on_overlay_toggle)
         self._prayer.notif_toggled.connect(self._on_notif_toggle)
         self._themes_panel.theme_changed.connect(self._apply_theme)
+        self._themes_panel.style_changed.connect(self._apply_style)
         self._settings._city_search.city_selected.connect(self._on_city_selected_mw)
         # Alerts panel
         self._alerts.changed.connect(lambda: self._prayer_notifs.update(
@@ -411,8 +413,8 @@ class MainWindow(QWidget):
         sb = QWidget(); sb.setFixedWidth(72)
         sb.setStyleSheet(
             f"background:{AppTheme.sidebar};"
-            "border-right:0.5px solid rgba(29,158,117,0.08);")
-        v = QVBoxLayout(sb); v.setContentsMargins(0, 14, 0, 14); v.setSpacing(2)
+            "border-right:1px solid rgba(34,201,138,0.14);")
+        v = QVBoxLayout(sb); v.setContentsMargins(0, 16, 0, 16); v.setSpacing(4)
         #v.addWidget(_Logo())
         self._logo = _Logo()
         self._logo.clicked.connect(self._go_home)
@@ -422,7 +424,7 @@ class MainWindow(QWidget):
         def _sdiv():
             dw = QWidget(); dh = QHBoxLayout(dw); dh.setContentsMargins(12, 4, 12, 4)
             d = QWidget(); d.setFixedHeight(1)
-            d.setStyleSheet("background:rgba(29,158,117,0.10);")
+            d.setStyleSheet("background:rgba(34,201,138,0.18);")
             dh.addWidget(d); return dw
 
         v.addWidget(_sdiv())
@@ -531,39 +533,61 @@ class MainWindow(QWidget):
 
     def _on_fetch_err(self, msg: str):
         self._prayer.set_loading(False)
-        cached = get_cached_times(self._s)
-        if cached:
+
+        # 1) Any cached day within the last week — degrades gracefully,
+        #    works for any city (prayer times drift ~1-2 min/day).
+        cached, age_days = get_nearest_cached_times(self._s, max_age_days=7)
+        if cached is not None:
             self._times = cached
+            lang = self._lang
+            if age_days == 0:
+                warn = {
+                    "en": "⚠  No internet — showing today's cached times",
+                    "ru": "⚠  Нет интернета — время из сегодняшнего кэша",
+                    "kg": "⚠  Интернет жок — бүгүнкү кэштелген убакыт",
+                }.get(lang, "⚠  No internet — showing cached times")
+            else:
+                warn = {
+                    "en": f"⚠  No internet — times from {age_days}d ago (approx.)",
+                    "ru": f"⚠  Нет интернета — время {age_days} дн. назад (примерно)",
+                    "kg": f"⚠  Интернет жок — {age_days} күн мурунку убакыт (болжол)",
+                }.get(lang, f"⚠  No internet — {age_days}d-old cached times")
+            self._prayer.set_error(warn)
             self._update_header(offline=True)
             self._render()
             return
 
-        # No cache at all — use built-in fallback times so app is never blank
-        _fallback_by_month = {
-            "01": {"Fajr":"06:20","Sunrise":"08:05","Dhuhr":"13:00","Asr":"15:30","Maghrib":"17:50","Isha":"19:35"},
-            "02": {"Fajr":"05:55","Sunrise":"07:40","Dhuhr":"12:58","Asr":"16:00","Maghrib":"18:15","Isha":"20:00"},
-            "03": {"Fajr":"05:10","Sunrise":"06:50","Dhuhr":"12:52","Asr":"16:40","Maghrib":"18:55","Isha":"20:40"},
-            "04": {"Fajr":"04:15","Sunrise":"05:55","Dhuhr":"12:44","Asr":"17:15","Maghrib":"19:35","Isha":"21:20"},
-            "05": {"Fajr":"03:25","Sunrise":"05:10","Dhuhr":"12:40","Asr":"17:50","Maghrib":"20:15","Isha":"22:05"},
-            "06": {"Fajr":"03:00","Sunrise":"04:50","Dhuhr":"12:42","Asr":"18:10","Maghrib":"20:38","Isha":"22:35"},
-            "07": {"Fajr":"03:15","Sunrise":"05:02","Dhuhr":"12:48","Asr":"18:05","Maghrib":"20:35","Isha":"22:20"},
-            "08": {"Fajr":"03:55","Sunrise":"05:40","Dhuhr":"12:48","Asr":"17:45","Maghrib":"20:00","Isha":"21:45"},
-            "09": {"Fajr":"04:40","Sunrise":"06:20","Dhuhr":"12:42","Asr":"17:05","Maghrib":"19:05","Isha":"20:50"},
-            "10": {"Fajr":"05:25","Sunrise":"07:05","Dhuhr":"12:35","Asr":"16:20","Maghrib":"18:05","Isha":"19:50"},
-            "11": {"Fajr":"06:05","Sunrise":"07:50","Dhuhr":"12:35","Asr":"15:35","Maghrib":"17:15","Isha":"19:00"},
-            "12": {"Fajr":"06:30","Sunrise":"08:15","Dhuhr":"12:45","Asr":"15:10","Maghrib":"17:10","Isha":"19:00"},
-        }
-        _month_key = date.today().strftime("%m")
-        fallback = dict(_fallback_by_month.get(_month_key, _fallback_by_month["06"]))
-        self._times = fallback
+        # 2) No cache, but we know where the user is — compute locally
+        #    from sun position. No network, no per-city table.
+        lat = self._s.get("last_lat")
+        lon = self._s.get("last_lon")
+        if lat is not None and lon is not None:
+            from core.prayer_times import calculate_local, utc_offset_hours, resolve_timezone_offline
+            tz_name = resolve_timezone_offline(lat, lon, self._s.get("country_code", ""))
+            tz_offset = utc_offset_hours(tz_name, date.today())
+            self._times = calculate_local(
+                lat, lon, tz_offset, date.today(),
+                self._s.get("method", "MWL"), self._s.get("madhab", "Hanafi"))
+            lang = self._lang
+            warn = {
+                "en": "⚠  No internet, no cache — locally computed (~±2 min)",
+                "ru": "⚠  Нет интернета и кэша — расчёт на месте (~±2 мин)",
+                "kg": "⚠  Интернет жана кэш жок — жергиликтүү эсептөө (~±2 мүн)",
+            }.get(lang, "⚠  Offline — locally computed times")
+            self._prayer.set_error(warn)
+            self._update_header(offline=True)
+            self._render()
+            return
 
-        # Show inline warning — not a blocking dialog
+        # 3) Never connected at all — nothing honest to show. A hardcoded
+        #    city would be wrong, not approximate, so say so plainly.
+        self._times = {}
         lang = self._lang
         warn = {
-            "en": "⚠  No internet — showing approximate times for Bishkek",
-            "ru": "⚠  Нет интернета — приблизительные времена для Бишкека",
-            "kg": "⚠  Интернет жок — Бишкек үчүн болжолдуу убакыттар",
-        }.get(lang, "⚠  No internet — approximate times shown")
+            "en": "⚠  Connect to the internet once to set up your location",
+            "ru": "⚠  Подключитесь к интернету хотя бы раз, чтобы задать локацию",
+            "kg": "⚠  Локацияны коюу үчүн бир жолу интернетке кошулуңуз",
+        }.get(lang, "⚠  Internet required for first-time setup")
         self._prayer.set_error(warn)
         self._update_header(offline=True)
         self._render()
@@ -1008,3 +1032,12 @@ class MainWindow(QWidget):
         if hasattr(self, "_themes_panel"):
             self._themes_panel.set_current(name)
         if self._times: self._render()
+
+    def _apply_style(self, style_name: str):
+        """Shape axis (minimal/playful) — separate from color, see AppTheme.style."""
+        self._s["design_style"] = style_name
+        save(self._s)
+        # HeroCard reads AppTheme.shape() at paint time; refresh_shape() also
+        # rebuilds the badge (dot+label vs filled pill) and progress bar height.
+        if hasattr(self._prayer, "_hero"):
+            self._prayer._hero.refresh_shape()

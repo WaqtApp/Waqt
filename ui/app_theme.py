@@ -42,6 +42,40 @@ class AppTheme:
     row_bg   = "#0b1410"
     name     = "Dark Green"
 
+    # ── Style profile: SHAPE, independent of color ──────────────────────────
+    # Color themes (THEMES dict) answer "what hue". Style answers "how round,
+    # how thick, how loud". Two axes, so any color theme can pair with either
+    # style without a combinatorial explosion of presets.
+    style = "minimal"   # "minimal" (Apple-ish) | "playful" (One UI-ish)
+
+    STYLE_PROFILES = {
+        "minimal": {
+            "card_radius":     16,
+            "progress_h":      2,
+            "progress_radius": 1,
+            "badge_pill":      False,   # small dot + uppercase label
+            "row_radius":      10,
+            "border_alpha":    55,      # thin hairline border on cards
+        },
+        "playful": {
+            "card_radius":     26,
+            "progress_h":      8,
+            "progress_radius": 4,
+            "badge_pill":      True,    # filled rounded badge
+            "row_radius":      18,
+            "border_alpha":    0,       # no hairline — flat filled shapes instead
+        },
+    }
+
+    @classmethod
+    def shape(cls, key: str):
+        return cls.STYLE_PROFILES.get(cls.style, cls.STYLE_PROFILES["minimal"])[key]
+
+    @classmethod
+    def apply_style(cls, style_name: str) -> None:
+        if style_name in cls.STYLE_PROFILES:
+            cls.style = style_name
+
     @classmethod
     def apply(cls, colors: dict, name: str = "") -> None:
         cls.bg      = colors.get("bg",      cls.bg)
