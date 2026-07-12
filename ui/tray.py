@@ -86,6 +86,11 @@ class PrayerPopup(QWidget):
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        # Close when clicking anywhere outside
+        self.setWindowFlags(
+            self.windowFlags() |
+            Qt.WindowType.WindowDoesNotAcceptFocus
+        )
 
         self._hide_timer = QTimer(self)
         self._hide_timer.setSingleShot(True)
@@ -124,35 +129,70 @@ class PrayerPopup(QWidget):
 
     def update_times(self, times: dict, next_prayer: str,
                      lang_names: dict, countdown: str) -> None:
-        # Clear old rows
-        while self._rows_layout.count():
-            item = self._rows_layout.takeAt(0)
-            if item.widget(): item.widget().deleteLater()
-
         items = list(times.items())
-        for i, (name, time_str) in enumerate(items):
+
+        # ── Build rows only ONCE (first call or when prayer set changes) ──────
+        need_rebuild = (
+            not hasattr(self, "_row_labels")
+            or list(self._row_labels.keys()) != [n for n, _ in items]
+            or getattr(self, "_built_lang", {}) != lang_names
+        )
+        if need_rebuild:
+            self._build_rows(items, lang_names)
+            self._built_lang = dict(lang_names)
+
+        # ── Every second: just update text + styles, NO widget rebuild ────────
+        for name, time_str in items:
+            if name not in self._row_labels:
+                continue
+            nl, vl = self._row_labels[name]
             is_next = (name == next_prayer)
 
-            row = QWidget(); row.setStyleSheet("background:transparent;")
-            h = QHBoxLayout(row)
-            h.setContentsMargins(0, 7, 0, 7)
-
-            display = lang_names.get(name, name)
-            nl = QLabel(display)
+            # Name label
             nl.setFont(QFont("Segoe UI", 11,
                              QFont.Weight.DemiBold if is_next else QFont.Weight.Normal))
             nl.setStyleSheet(f"color:{'#5DCAA5' if is_next else TEXT};")
 
-            vl = QLabel(countdown if is_next else time_str)
+            # Value label — countdown for next, fixed time for others
+            vl.setText(countdown if is_next else time_str)
             vl.setStyleSheet(
                 f"color:{ACCENT if is_next else MUTED};font-size:11px;"
                 + ("font-weight:600;" if is_next else ""))
+
+    def _build_rows(self, items: list, lang_names: dict = None) -> None:
+        """Build all row widgets from scratch — called only when needed."""
+        if lang_names is None: lang_names = {}
+        # Clear existing
+        while self._rows_layout.count():
+            item = self._rows_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        self._row_labels: dict[str, tuple] = {}  # name → (name_lbl, value_lbl)
+
+        for i, (name, time_str) in enumerate(items):
+            row = QWidget(); row.setStyleSheet("background:transparent;")
+            h = QHBoxLayout(row)
+            h.setContentsMargins(0, 7, 0, 7)
+
+            nl = QLabel(lang_names.get(name, name))
+            nl.setFont(QFont("Segoe UI", 11, QFont.Weight.Normal))
+            nl.setStyleSheet(f"color:{TEXT};")
+            nl.setFixedWidth(110)   # enough for longest kg name
+
+            vl = QLabel(time_str)
+            vl.setStyleSheet(f"color:{MUTED};font-size:11px;")
             vl.setAlignment(Qt.AlignmentFlag.AlignRight)
+            # Fixed width — prevents popup from resizing every second
+            vl.setFixedWidth(80)
 
             h.addWidget(nl); h.addStretch(); h.addWidget(vl)
 
+            self._row_labels[name] = (nl, vl)
+
             wrap = QWidget(); wrap.setStyleSheet("background:transparent;")
-            wv = QVBoxLayout(wrap); wv.setContentsMargins(0, 0, 0, 0); wv.setSpacing(0)
+            wv = QVBoxLayout(wrap)
+            wv.setContentsMargins(0, 0, 0, 0); wv.setSpacing(0)
             wv.addWidget(row)
 
             if i < len(items) - 1:
@@ -162,14 +202,43 @@ class PrayerPopup(QWidget):
 
             self._rows_layout.addWidget(wrap)
 
-        self._card.adjustSize(); self.adjustSize()
+        # Size fixed after first build — no more adjustSize on tick
+        self._card.setFixedWidth(240)
+        self._card.adjustSize()
+        self.setFixedWidth(240)
+        self.adjustSize()
 
     def show_near_tray(self) -> None:
         screen = QApplication.primaryScreen().availableGeometry()
-        self.adjustSize()
+        # Don't call adjustSize — width is fixed, height set after _build_rows
         self.move(screen.right() - self.width() - 14,
                   screen.bottom() - self.height() - 10)
         self.show(); self.raise_()
+        # Install app-level filter to catch clicks outside popup
+        QApplication.instance().installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        """Close popup when user clicks anywhere outside it."""
+        from PyQt6.QtCore import QEvent
+        if (self.isVisible() and
+                event.type() == QEvent.Type.MouseButtonPress):
+            # Check if click is outside our widget
+            try:
+                gpos = event.globalPosition().toPoint()
+            except AttributeError:
+                gpos = event.globalPos()
+            if not self.geometry().contains(gpos):
+                self._hide_timer.stop()
+                self.hide()
+                QApplication.instance().removeEventFilter(self)
+        return False   # don't consume the event
+
+    def _do_hide(self):
+        self.hide()
+        try:
+            QApplication.instance().removeEventFilter(self)
+        except Exception:
+            pass
 
     def enterEvent(self, event):
         self._hide_timer.stop(); super().enterEvent(event)
@@ -177,7 +246,12 @@ class PrayerPopup(QWidget):
     def leaveEvent(self, event):
         self._hide_timer.start(); super().leaveEvent(event)
 
-    def _do_hide(self): self.hide()
+
+    def mousePressEvent(self, event):
+        """Close popup on any mouse click."""
+        self._hide_timer.stop()
+        self.hide()
+        super().mousePressEvent(event)
 
     def paintEvent(self, _):
         p = QPainter(self); p.setRenderHint(QPainter.RenderHint.Antialiasing)
