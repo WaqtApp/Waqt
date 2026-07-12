@@ -17,6 +17,7 @@ country_code from Nominatim gives us the correct timezone for most countries.
 """
 
 import requests
+import math
 from datetime import date
 
 MADHAB_MAP = {"Hanafi": 1, "Shafi": 0, "Maliki": 0, "Hanbali": 0}
@@ -301,4 +302,143 @@ def _extract_times(data: dict) -> dict:
     return {
         key: timings.get(key, "00:00").split(" ")[0][:5]
         for key in ("Fajr", "Sunrise", "Dhuhr", "Asr", "Maghrib", "Isha")
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  LOCAL (NETWORK-FREE) CALCULATION — ultimate offline fallback
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Used only when there is no internet AND no usable cache. Computes prayer
+# times directly from sun position (standard low-precision solar ephemeris,
+# accurate to within ~1-2 minutes — plenty for an emergency fallback) given
+# just latitude/longitude/date. No API, no per-city table, works anywhere
+# on Earth. This replaces any hardcoded "Bishkek" style fallback.
+
+FAJR_ANGLE: dict[str, float] = {
+    "MWL": 18, "Karachi": 18, "ISNA": 15, "Egypt": 19.5,
+    "Makkah": 18.5, "Tehran": 17.7, "Diyanet": 18, "Morocco": 19,
+}
+# Isha as an angle below horizon. Makkah traditionally uses a fixed
+# 90-minute offset after Maghrib instead of an angle — handled separately.
+ISHA_ANGLE: dict[str, float] = {
+    "MWL": 17, "Karachi": 18, "ISNA": 15, "Egypt": 17.5,
+    "Tehran": 14, "Diyanet": 17, "Morocco": 17,
+}
+ISHA_MINUTES_AFTER_MAGHRIB: dict[str, int] = {"Makkah": 90}
+
+
+def resolve_timezone_offline(lat: float, lon: float, country_code: str = "") -> str | None:
+    """Public, network-free timezone lookup (levels 1-2 only: timezonefinder,
+    then country-code table). Use this from other modules instead of the
+    private _tz_from_* helpers directly."""
+    return (_tz_from_timezonefinder(lat, lon)
+            or _tz_from_country_code(country_code.lower() if country_code else None))
+
+
+def utc_offset_hours(tz_name: str | None, target_date: date) -> float:
+    """
+    IANA tz name -> UTC offset in hours for the given date, DST-aware,
+    no network needed (zoneinfo is stdlib since Python 3.9).
+    Falls back to 0 (UTC) if tz_name is missing/unrecognized — better to be
+    a few hours off once than to crash with no times shown at all.
+    """
+    if not tz_name:
+        return 0.0
+    try:
+        from zoneinfo import ZoneInfo
+        from datetime import datetime
+        dt = datetime(target_date.year, target_date.month, target_date.day,
+                       12, 0, tzinfo=ZoneInfo(tz_name))
+        return dt.utcoffset().total_seconds() / 3600
+    except Exception:
+        return 0.0
+
+
+def _julian_day(y: int, m: int, d: int) -> float:
+    if m <= 2:
+        y -= 1
+        m += 12
+    a = y // 100
+    b = 2 - a + a // 4
+    return int(365.25 * (y + 4716)) + int(30.6001 * (m + 1)) + d + b - 1524.5
+
+
+def _sun_position(jd: float) -> tuple[float, float]:
+    """Returns (declination_deg, equation_of_time_hours) for the given JD."""
+    d  = jd - 2451545.0
+    g  = math.radians((357.529 + 0.98560028 * d) % 360)
+    q  = (280.459 + 0.98564736 * d) % 360
+    lo = math.radians((q + 1.915 * math.sin(g) + 0.020 * math.sin(2 * g)) % 360)
+    e  = math.radians(23.439 - 0.00000036 * d)
+
+    dec = math.degrees(math.asin(math.sin(e) * math.sin(lo)))
+    ra  = math.degrees(math.atan2(math.cos(e) * math.sin(lo), math.cos(lo))) / 15
+    ra  %= 24
+
+    eqt = q / 15 - ra
+    if eqt > 12:  eqt -= 24
+    if eqt < -12: eqt += 24
+    return dec, eqt
+
+
+def _hour_angle(lat_deg: float, dec_deg: float, sun_altitude_deg: float) -> float:
+    """Hours from solar noon at which the sun reaches sun_altitude_deg
+    (negative = below horizon, e.g. -18 for Fajr; positive = above, for Asr)."""
+    lat = math.radians(lat_deg)
+    dec = math.radians(dec_deg)
+    alt = math.radians(sun_altitude_deg)
+    cos_h = (math.sin(alt) - math.sin(lat) * math.sin(dec)) / (math.cos(lat) * math.cos(dec))
+    cos_h = max(-1.0, min(1.0, cos_h))
+    return math.degrees(math.acos(cos_h)) / 15
+
+
+def _asr_altitude_deg(lat_deg: float, dec_deg: float, shadow_factor: int) -> float:
+    lat = math.radians(lat_deg)
+    dec = math.radians(dec_deg)
+    return math.degrees(math.atan(1.0 / (shadow_factor + math.tan(abs(lat - dec)))))
+
+
+def _hhmm(hours: float) -> str:
+    hours %= 24
+    h = int(hours)
+    m = int(round((hours - h) * 60))
+    if m == 60:
+        m = 0; h = (h + 1) % 24
+    return f"{h:02d}:{m:02d}"
+
+
+def calculate_local(lat: float, lon: float, tz_offset_hours: float,
+                     target_date: date, method: str, madhab: str) -> dict:
+    """
+    Compute all six prayer times with no network access.
+    tz_offset_hours: e.g. +6 for Bishkek, +5 for Karachi, -5 for New York
+    (get this from timezonefinder — also network-free — not from the API).
+    """
+    jd = _julian_day(target_date.year, target_date.month, target_date.day)
+    dec, eqt = _sun_position(jd)
+
+    dhuhr = 12 - eqt - lon / 15 + tz_offset_hours
+
+    fajr_h    = _hour_angle(lat, dec, -FAJR_ANGLE.get(method, 18))
+    sunrise_h = _hour_angle(lat, dec, -0.833)
+    shadow    = 2 if madhab == "Hanafi" else 1
+    asr_alt   = _asr_altitude_deg(lat, dec, shadow)
+    asr_h     = _hour_angle(lat, dec, asr_alt)
+
+    maghrib = dhuhr + sunrise_h  # same magnitude as sunrise, after noon
+
+    if method in ISHA_MINUTES_AFTER_MAGHRIB:
+        isha = maghrib + ISHA_MINUTES_AFTER_MAGHRIB[method] / 60
+    else:
+        isha_h = _hour_angle(lat, dec, -ISHA_ANGLE.get(method, 17))
+        isha = dhuhr + isha_h
+
+    return {
+        "Fajr":    _hhmm(dhuhr - fajr_h),
+        "Sunrise": _hhmm(dhuhr - sunrise_h),
+        "Dhuhr":   _hhmm(dhuhr),
+        "Asr":     _hhmm(dhuhr + asr_h),
+        "Maghrib": _hhmm(maghrib),
+        "Isha":    _hhmm(isha),
     }
