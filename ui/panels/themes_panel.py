@@ -21,13 +21,14 @@ sys.path.insert(0, _root)
 
 from themes import ThemeCard, THEMES
 from ui.app_theme import AppTheme
-from ui.widgets import _SaveButton
+from ui.widgets import _SaveButton, ToggleSwitch
 
 
 class ThemesPanel(QWidget):
     """Inline themes panel — same nav as Settings/Overlay/Alerts/Calendar."""
 
     theme_changed = pyqtSignal(dict)
+    style_changed = pyqtSignal(str)   # "minimal" | "playful"
     _COLS = 2
 
     def __init__(self, current_theme: str = "Dark Green", parent=None):
@@ -54,6 +55,27 @@ class ThemesPanel(QWidget):
         v = QVBoxLayout(content)
         v.setContentsMargins(14, 18, 14, 16)
         v.setSpacing(12)
+
+        # ── Style: shape, independent of color ──
+        style_hdr = QLabel("STYLE")
+        style_hdr.setFont(AppTheme.font(9, QFont.Weight.Bold))
+        style_hdr.setStyleSheet("color:rgba(212,232,216,0.28);letter-spacing:.12em;")
+        v.addWidget(style_hdr)
+
+        style_row = QHBoxLayout()
+        style_lbl = QLabel("Playful shapes")
+        style_lbl.setStyleSheet("color:rgba(212,232,216,0.70);font-size:13px;")
+        self._style_ts = ToggleSwitch(checked=(AppTheme.style == "playful"))
+        self._style_ts.toggled.connect(self._on_style_toggle)
+        style_row.addWidget(style_lbl); style_row.addStretch(); style_row.addWidget(self._style_ts)
+        v.addLayout(style_row)
+
+        style_hint = QLabel("Off = thin lines, sharp corners (Apple-ish).  "
+                             "On = big rounded shapes, filled badges (One UI-ish).")
+        style_hint.setWordWrap(True)
+        style_hint.setStyleSheet("color:rgba(212,232,216,0.28);font-size:10px;")
+        v.addWidget(style_hint)
+        v.addSpacing(6)
 
         hdr = QLabel("THEMES")
         hdr.setFont(AppTheme.font(10, QFont.Weight.Bold))
@@ -88,6 +110,10 @@ class ThemesPanel(QWidget):
         self._apply_btn.clicked.connect(self._apply)
         fr.addWidget(self._apply_btn)
         outer.addWidget(footer)
+
+    def _on_style_toggle(self, checked: bool):
+        AppTheme.apply_style("playful" if checked else "minimal")
+        self.style_changed.emit(AppTheme.style)
 
     def _select(self, name: str):
         if name == self._current:
