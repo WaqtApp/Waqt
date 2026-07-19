@@ -112,7 +112,8 @@ class PrayerIconBadge(QWidget):
             ic = QColor(cfg["stroke"])
 
         p.setBrush(QBrush(bg)); p.setPen(Qt.PenStyle.NoPen)
-        p.drawRoundedRect(0, 0, 40, 40, 10, 10)
+        r = AppTheme.shape("row_radius")
+        p.drawRoundedRect(0, 0, 40, 40, r, r)
 
         p.setPen(QPen(ic, 1.6, Qt.PenStyle.SolidLine,
                       Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
@@ -194,7 +195,7 @@ class BellToggle(QWidget):
         cx, cy = w / 2, h / 2
         col = QColor(AppTheme.accent) if self._on else QColor(255, 255, 255, 24)
         if self._on:
-            p.setBrush(QBrush(QColor(29, 158, 117, 16))); p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QBrush(AppTheme.accent_qcolor(16))); p.setPen(Qt.PenStyle.NoPen)
             p.drawRoundedRect(1, 1, w - 2, h - 2, 6, 6)
         p.setPen(QPen(col, 1.3, Qt.PenStyle.SolidLine,
                       Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
@@ -220,24 +221,30 @@ class BellToggle(QWidget):
 class PrayerProgressBar(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedHeight(2)
+        self.setFixedHeight(AppTheme.shape("progress_h"))
         self._v = 0.0
 
     def set_progress(self, v: float):
         self._v = max(0.0, min(1.0, v)); self.update()
 
+    def refresh_shape(self):
+        """Call after AppTheme.apply_style() changes — updates fixed height."""
+        self.setFixedHeight(AppTheme.shape("progress_h"))
+        self.update()
+
     def paintEvent(self, _):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         w, h = self.width(), self.height()
+        r = AppTheme.shape("progress_radius")
         p.setBrush(QBrush(QColor(255, 255, 255, 8))); p.setPen(Qt.PenStyle.NoPen)
-        p.drawRoundedRect(0, 0, w, h, 1, 1)
+        p.drawRoundedRect(0, 0, w, h, r, r)
         if self._v > 0:
             fw = int(w * self._v)
             g = QLinearGradient(0, 0, fw, 0)
             g.setColorAt(0, AppTheme.c(AppTheme.accent))
             g.setColorAt(1, QColor("#5DCAA5"))
-            p.setBrush(QBrush(g)); p.drawRoundedRect(0, 0, fw, h, 1, 1)
+            p.setBrush(QBrush(g)); p.drawRoundedRect(0, 0, fw, h, r, r)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -274,17 +281,17 @@ class PrayerRow(QWidget):
         # Name + Arabic
         if state == "done":
             name_color = "rgba(212,232,216,0.20)"
-            arabic_color = "rgba(29,158,117,0.12)"
+            arabic_color = f"{AppTheme.accent_rgba(0.12)}"
             time_color = "rgba(212,232,216,0.15)"
             fw = QFont.Weight.Normal
         elif state == "active":
             name_color = "#f0f8f4"
-            arabic_color = f"rgba(29,158,117,0.55)"
+            arabic_color = f"{AppTheme.accent_rgba(0.55)}"
             time_color = AppTheme.accent
             fw = QFont.Weight.Medium
         else:
             name_color = "rgba(212,232,216,0.60)"
-            arabic_color = "rgba(29,158,117,0.28)"
+            arabic_color = f"{AppTheme.accent_rgba(0.28)}"
             time_color = "rgba(212,232,216,0.36)"
             fw = QFont.Weight.Normal
 
@@ -332,7 +339,7 @@ class PrayerRow(QWidget):
 
         if self._state == "active":
             p.setBrush(QBrush(QColor(10, 32, 20, 235)))
-            p.setPen(QPen(QColor(29, 158, 117, 55), 0.7))
+            p.setPen(QPen(AppTheme.accent_qcolor(55), 0.7))
         elif self._state == "done":
             p.setBrush(QBrush(QColor(8, 10, 9, 160)))
             p.setPen(QPen(QColor(255, 255, 255, 5), 0.5))
@@ -342,7 +349,8 @@ class PrayerRow(QWidget):
             p.setBrush(QBrush(QColor(11, 18, 14, a)))
             p.setPen(QPen(QColor(255, 255, 255, ba), 0.5))
 
-        p.drawRoundedRect(QRectF(mx, my, w - mx * 2, h - my * 2), 10, 10)
+        r = AppTheme.shape("row_radius")
+        p.drawRoundedRect(QRectF(mx, my, w - mx * 2, h - my * 2), r, r)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -363,20 +371,12 @@ class HeroCard(QFrame):
         root.setContentsMargins(22, 16, 22, 12)
         root.setSpacing(0)
 
-        badge_row = QHBoxLayout()
-        badge_row.setSpacing(7)
-        self._dot = QWidget()
-        self._dot.setFixedSize(7, 7)
-        self._dot.setStyleSheet(f"background:{AppTheme.accent};border-radius:4px;")
-        self.badge_lbl = QLabel("Next prayer")
-        self.badge_lbl.setStyleSheet(
-            f"color:rgba(29,158,117,0.60);font-size:10px;"
-            "letter-spacing:.07em;font-weight:500;"
-        )
-        badge_row.addWidget(self._dot)
-        badge_row.addWidget(self.badge_lbl)
-        badge_row.addStretch()
-        root.addLayout(badge_row)
+        self._badge_row = QHBoxLayout()
+        self._badge_row.setSpacing(7)
+        root.addLayout(self._badge_row)
+        self.badge_lbl = None   # created by _build_badge()
+        self._badge_text = "Next prayer"
+        self._build_badge()
         root.addSpacing(6)
 
         main_row = QHBoxLayout()
@@ -396,7 +396,7 @@ class HeroCard(QFrame):
         af.setFamilies(["Arabic Typesetting", "Amiri", "Scheherazade New", "Noto Naskh Arabic", "Tahoma"])
         af.setPointSize(12)
         self.arabic_lbl.setFont(af)
-        self.arabic_lbl.setStyleSheet(f"color:rgba(29,158,117,0.38);")
+        self.arabic_lbl.setStyleSheet(f"color:{AppTheme.accent_rgba(0.38)};")
         self.arabic_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
 
         left.addWidget(self.name_lbl)
@@ -431,6 +431,39 @@ class HeroCard(QFrame):
         self._bar = PrayerProgressBar()
         root.addWidget(self._bar)
 
+    def _build_badge(self):
+        """(Re)builds the badge row for the current AppTheme.style."""
+        while self._badge_row.count():
+            item = self._badge_row.takeAt(0)
+            if item.widget(): item.widget().deleteLater()
+
+        if AppTheme.shape("badge_pill"):
+            # Playful: filled rounded pill, dark text on accent bg
+            self.badge_lbl = QLabel(self._badge_text)
+            self.badge_lbl.setStyleSheet(
+                f"background:{AppTheme.accent};color:#04342c;"
+                "font-size:11px;font-weight:500;"
+                "padding:4px 12px;border-radius:10px;")
+            self._badge_row.addWidget(self.badge_lbl)
+        else:
+            # Minimal: small dot + uppercase muted label
+            dot = QWidget(); dot.setFixedSize(7, 7)
+            dot.setStyleSheet(f"background:{AppTheme.accent};border-radius:4px;")
+            self.badge_lbl = QLabel(self._badge_text)
+            self.badge_lbl.setStyleSheet(
+                f"color:{AppTheme.accent_rgba(0.60)};font-size:10px;"
+                "letter-spacing:.07em;font-weight:500;")
+            self._badge_row.addWidget(dot)
+            self._badge_row.addWidget(self.badge_lbl)
+        self._badge_row.addStretch()
+
+    def refresh_shape(self):
+        """Call after AppTheme.apply_style() changes to re-skin badge/bar."""
+        self._badge_text = self.badge_lbl.text() if self.badge_lbl else self._badge_text
+        self._build_badge()
+        self._bar.refresh_shape()
+        self.update()
+
     def set_progress(self, v: float):
         self._bar.set_progress(v)
 
@@ -438,20 +471,23 @@ class HeroCard(QFrame):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         w, h = self.width(), self.height()
+        rad = AppTheme.shape("card_radius")
+        b_alpha = AppTheme.shape("border_alpha")
 
         p.setBrush(QBrush(QColor(5, 20, 13, 240)))
         p.setPen(Qt.PenStyle.NoPen)
-        p.drawRoundedRect(QRectF(0, 0, w, h), 16, 16)
+        p.drawRoundedRect(QRectF(0, 0, w, h), rad, rad)
 
         g = QLinearGradient(0, 0, w * .7, h * .7)
-        g.setColorAt(0, QColor(29, 158, 117, 20))
+        g.setColorAt(0, AppTheme.accent_qcolor(20))
         g.setColorAt(1, QColor(0, 0, 0, 0))
         p.setBrush(QBrush(g))
-        p.drawRoundedRect(QRectF(0, 0, w, h), 16, 16)
+        p.drawRoundedRect(QRectF(0, 0, w, h), rad, rad)
 
-        p.setBrush(Qt.BrushStyle.NoBrush)
-        p.setPen(QPen(QColor(29, 158, 117, 55), 0.8))
-        p.drawRoundedRect(QRectF(.4, .4, w - .8, h - .8), 16, 16)
+        if b_alpha > 0:
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.setPen(QPen(QColor(29, 158, 117, b_alpha), 0.8))
+            p.drawRoundedRect(QRectF(.4, .4, w - .8, h - .8), rad, rad)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -496,7 +532,8 @@ class SidebarBtn(QWidget):
         if bg_a:
             p.setBrush(QBrush(QColor(29, 158, 117, bg_a)))
             p.setPen(Qt.PenStyle.NoPen)
-            p.drawRoundedRect(8, 4, w - 16, top_h - 4, 10, 10)
+            r = AppTheme.shape("row_radius")
+            p.drawRoundedRect(8, 4, w - 16, top_h - 4, r, r)
 
         sz = self._ICON_SZ; iy = (top_h - sz) // 2; ox = (w - sz) // 2
         if self._px and not self._px.isNull():
@@ -550,9 +587,9 @@ class _Logo(QWidget):
         cx, cy = w / 2, h * .42
 
         p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QBrush(QColor(29, 158, 117, 7)))
+        p.setBrush(QBrush(AppTheme.accent_qcolor(7)))
         p.drawEllipse(QPointF(cx, cy), 18, 18)
-        p.setPen(QPen(QColor(29, 158, 117, 20), 0.5))
+        p.setPen(QPen(AppTheme.accent_qcolor(20), 0.5))
         p.setBrush(Qt.GlobalColor.transparent)
         p.drawEllipse(QPointF(cx, cy), 14, 14)
 
@@ -623,12 +660,13 @@ class _SaveButton(QPushButton):
             fill = QColor(ac.red(), ac.green(), ac.blue(), 10)
         p.setBrush(QBrush(fill))
         p.setPen(Qt.PenStyle.NoPen)
-        p.drawRoundedRect(QRectF(0, 0, w, h), 9, 9)
+        r = AppTheme.shape("row_radius")
+        p.drawRoundedRect(QRectF(0, 0, w, h), r, r)
 
         border_a = 110 if self._hover else 65
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.setPen(QPen(QColor(ac.red(), ac.green(), ac.blue(), border_a), 1.0))
-        p.drawRoundedRect(QRectF(0.5, 0.5, w - 1, h - 1), 9, 9)
+        p.drawRoundedRect(QRectF(0.5, 0.5, w - 1, h - 1), r, r)
 
         text_a = 240 if self._hover else 180
         p.setPen(QColor(255, 255, 255, text_a))
@@ -786,7 +824,7 @@ class CitySearchWidget(QWidget):
         self._dropdown.setStyleSheet(
             "QFrame {"
             "background:rgba(8,18,12,0.98);"
-            "border:1px solid rgba(29,158,117,0.35);"
+            f"border:1px solid {AppTheme.accent_rgba(0.35)};"
             "border-radius:10px;}")
         self._drop_v = QVBoxLayout(self._dropdown)
         self._drop_v.setContentsMargins(5, 5, 5, 5)
@@ -796,8 +834,8 @@ class CitySearchWidget(QWidget):
 
         self._cur_pill = QWidget()
         self._cur_pill.setStyleSheet(
-            "background:rgba(29,158,117,0.08);"
-            "border:1px solid rgba(29,158,117,0.20);"
+            f"background:{AppTheme.accent_rgba(0.08)};"
+            f"border:1px solid {AppTheme.accent_rgba(0.20)};"
             "border-radius:8px;")
         cp = QHBoxLayout(self._cur_pill)
         cp.setContentsMargins(10, 6, 10, 6)
@@ -837,21 +875,21 @@ class CitySearchWidget(QWidget):
                 "QPushButton {"
                 "background:rgba(255,255,255,0.04);"
                 f"color:{ac};"
-                "border:1px solid rgba(29,158,117,0.30);"
+                f"border:1px solid {AppTheme.accent_rgba(0.30)};"
                 "border-radius:8px;font-size:11px;font-weight:600;}"
                 "QPushButton:hover {"
-                "background:rgba(29,158,117,0.12);"
-                "border-color:rgba(29,158,117,0.55);}")
+                f"background:{AppTheme.accent_rgba(0.12)};"
+                f"border-color:{AppTheme.accent_rgba(0.55)};}}")
         else:
             btn.setStyleSheet(
                 "QPushButton {"
-                f"background:rgba(29,158,117,0.09);color:{ac};"
-                "border:1px solid rgba(29,158,117,0.25);"
+                f"background:{AppTheme.accent_rgba(0.09)};color:{ac};"
+                f"border:1px solid {AppTheme.accent_rgba(0.25)};"
                 "border-radius:8px;font-size:11px;font-weight:500;"
                 "padding-left:32px;text-align:left;}"
                 "QPushButton:hover {"
-                "background:rgba(29,158,117,0.16);"
-                "border-color:rgba(29,158,117,0.50);}")
+                f"background:{AppTheme.accent_rgba(0.16)};"
+                f"border-color:{AppTheme.accent_rgba(0.50)};}}")
 
     def _on_text_changed(self, text: str):
         self._clear_btn.setVisible(bool(text))
@@ -898,7 +936,7 @@ class CitySearchWidget(QWidget):
         w.setCursor(Qt.CursorShape.PointingHandCursor)
         w.setStyleSheet(
             "QWidget {background:transparent;border-radius:7px;}"
-            "QWidget:hover {background:rgba(29,158,117,0.10);}")
+            f"QWidget:hover {{background:{AppTheme.accent_rgba(0.10)};}}")
         h = QHBoxLayout(w)
         h.setContentsMargins(10, 0, 12, 0)
         h.setSpacing(10)

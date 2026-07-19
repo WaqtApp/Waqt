@@ -97,14 +97,14 @@ class OverlayPanel(QWidget):
         ac = AppTheme.accent
         if active:
             card.setStyleSheet(
-                "background:rgba(29,158,117,0.10);"
-                "border:1px solid rgba(29,158,117,0.40);"
-                "border-radius:9px;")
+                f"background:{AppTheme.accent_rgba(0.10)};"
+                f"border:1px solid {AppTheme.accent_rgba(0.40)};"
+                f"border-radius:{AppTheme.shape('row_radius')}px;")
         else:
             card.setStyleSheet(
                 "background:rgba(255,255,255,0.03);"
-                "border:1px solid rgba(255,255,255,0.06);"
-                "border-radius:9px;")
+                f"border:1px solid rgba(255,255,255,0.06);"
+                f"border-radius:{AppTheme.shape('row_radius')}px;")
 
         h = QHBoxLayout(card); h.setContentsMargins(14, 0, 14, 0); h.setSpacing(12)
 
@@ -139,14 +139,14 @@ class OverlayPanel(QWidget):
             active = (k == key)
             if active:
                 card.setStyleSheet(
-                    "background:rgba(29,158,117,0.10);"
-                    "border:1px solid rgba(29,158,117,0.40);"
-                    "border-radius:9px;")
+                    f"background:{AppTheme.accent_rgba(0.10)};"
+                    f"border:1px solid {AppTheme.accent_rgba(0.40)};"
+                    f"border-radius:{AppTheme.shape('row_radius')}px;")
             else:
                 card.setStyleSheet(
                     "background:rgba(255,255,255,0.03);"
-                    "border:1px solid rgba(255,255,255,0.06);"
-                    "border-radius:9px;")
+                    f"border:1px solid rgba(255,255,255,0.06);"
+                    f"border-radius:{AppTheme.shape('row_radius')}px;")
             h = card.layout()
             if h and h.count() >= 1:
                 dot = h.itemAt(0).widget()

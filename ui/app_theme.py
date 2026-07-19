@@ -91,6 +91,20 @@ class AppTheme:
         col.setAlpha(alpha)
         return col
 
+    @classmethod
+    def accent_qcolor(cls, alpha: int = 255) -> QColor:
+        """QColor for the current accent, given alpha — use in paintEvent
+        instead of hardcoding QColor(29, 158, 117, alpha)."""
+        return cls.c(cls.accent, alpha)
+
+    @classmethod
+    def accent_rgba(cls, alpha: float) -> str:
+        """CSS 'rgba(r,g,b,a)' string for the current accent, given alpha
+        as a 0.0-1.0 float — use in QSS f-strings instead of hardcoding
+        'rgba(29,158,117,0.10)', which silently ignores the color theme."""
+        col = QColor(cls.accent)
+        return f"rgba({col.red()},{col.green()},{col.blue()},{alpha})"
+
     @staticmethod
     def font(size: int, weight=QFont.Weight.Normal, family: str = "Segoe UI") -> QFont:
         if size <= 0:
@@ -300,11 +314,11 @@ T: dict[str, dict] = {
         # Sidebar labels
         "sidebar_settings": "Настройки",
         "sidebar_overlay":  "Оверлей",
-        "sidebar_alerts":   "Алерты",
+        "sidebar_alerts":   "Уведомления",
         "sidebar_calendar": "Календарь",
         "sidebar_themes":   "Темы",
         # Panel headers
-        "panel_alerts":    "АЛЕРТЫ",
+        "panel_alerts":    "Уведомления",
         "panel_overlay":   "ОВЕРЛЕЙ",
         "panel_style":     "СТИЛЬ",
         "panel_calendar":  "КАЛЕНДАРЬ",
