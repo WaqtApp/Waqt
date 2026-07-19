@@ -988,6 +988,10 @@ class MainWindow(QWidget):
                                 "border-right:0.5px solid rgba(255,255,255,0.04);")
         self._prayer.setStyleSheet(f"background:{AppTheme.bg};")
         self._prayer._refresh_bg()
+        # Floating overlay widget — not a child of any panel, so it needs
+        # an explicit nudge or it stays on the old theme's colors.
+        if hasattr(self, "_overlay"):
+            self._overlay.refresh_theme()
         # Sync themes panel active card
         if hasattr(self, "_themes_panel"):
             self._themes_panel.set_current(name)

@@ -18,13 +18,33 @@ from PyQt6.QtGui import (
     QFont, QColor, QPainter, QBrush, QPen, QCursor, QPainterPath,
 )
 
-# ── Accent pulled lazily so it reflects AppTheme changes ─────────────────────
-def _accent() -> str:
+# ── Theme pulled lazily so overlay always reflects the live AppTheme ─────────
+# (module-level fallback keeps this file loadable/testable outside the app)
+class _FallbackTheme:
+    accent  = "#1D9E75"
+    bg      = "#1a1a2e"
+    surface = "#16213e"
+    text    = "#e0e0e0"
+    border  = "#2a2a4a"
+
+
+def _theme():
     try:
         from ui.app_theme import AppTheme
-        return AppTheme.accent
+        return AppTheme
     except Exception:
-        return "#1D9E75"
+        return _FallbackTheme
+
+
+def _accent() -> str:
+    return _theme().accent
+
+
+def _rgba(hex_: str, alpha: float) -> str:
+    """CSS 'rgba(r,g,b,a)' string for any theme color — same idea as
+    AppTheme.accent_rgba() but works for bg/surface/border too."""
+    c = QColor(hex_)
+    return f"rgba({c.red()},{c.green()},{c.blue()},{alpha})"
 
 
 # ── Crescent moon widget ───────────────────────────────────────────────────────
@@ -90,13 +110,14 @@ class StyleCard(QFrame):
 
         v = QVBoxLayout(self); v.setContentsMargins(12, 9, 12, 9); v.setSpacing(3)
 
+        t = _theme()
         self._name_lbl = QLabel(info["name"])
         self._name_lbl.setStyleSheet(
-            f"color:{'#5DCAA5' if is_active else '#e0e0e0'};"
+            f"color:{t.accent if is_active else t.text};"
             f"font-size:12px;font-weight:{'600' if is_active else '400'};"
             "background:transparent;")
         desc_lbl = QLabel(info["desc"])
-        desc_lbl.setStyleSheet("color:#8888aa;font-size:10px;background:transparent;")
+        desc_lbl.setStyleSheet(f"color:{_rgba(t.text, 0.45)};font-size:10px;background:transparent;")
         desc_lbl.setWordWrap(True)
 
         v.addWidget(self._name_lbl)
@@ -104,10 +125,12 @@ class StyleCard(QFrame):
         v.addStretch()
 
     def _refresh_style(self):
-        border = f"1.5px solid {_accent()}" if self._active else "1px solid #2a2a4a"
+        t = _theme()
+        border = f"1.5px solid {t.accent}" if self._active else f"1px solid {t.border}"
+        bg = _rgba(t.accent, 0.10) if self._active else t.surface
         self.setStyleSheet(f"""
             QFrame {{
-                background: {'#0d2b1f' if self._active else '#16213e'};
+                background: {bg};
                 border: {border};
                 border-radius: 9px;
             }}
@@ -116,8 +139,9 @@ class StyleCard(QFrame):
     def set_active(self, active: bool):
         self._active = active
         self._refresh_style()
+        t = _theme()
         self._name_lbl.setStyleSheet(
-            f"color:{'#5DCAA5' if active else '#e0e0e0'};"
+            f"color:{t.accent if active else t.text};"
             f"font-size:12px;font-weight:{'600' if active else '400'};"
             "background:transparent;")
 
@@ -136,20 +160,21 @@ class OverlayStyleDialog(QDialog):
         self._current = current_style
         self._cards: dict[str, StyleCard] = {}
 
-        self.setStyleSheet("""
-            QDialog  { background: #1a1a2e; }
-            QLabel   { color: #e0e0e0; background: transparent; }
-            QPushButton {
-                background: #1D9E75; color: #fff; border: none;
+        t = _theme()
+        self.setStyleSheet(f"""
+            QDialog  {{ background: {t.bg}; }}
+            QLabel   {{ color: {t.text}; background: transparent; }}
+            QPushButton {{
+                background: {t.accent}; color: #fff; border: none;
                 border-radius: 7px; padding: 7px 22px; font-size: 13px;
-            }
-            QPushButton:hover { background: #17b882; }
+            }}
+            QPushButton:hover {{ background: {_rgba(t.accent, 0.85)}; }}
         """)
 
         v = QVBoxLayout(self); v.setContentsMargins(20, 18, 20, 18); v.setSpacing(14)
 
         title = QLabel("Choose overlay style")
-        title.setStyleSheet("font-size:13px;font-weight:600;color:#fff;")
+        title.setStyleSheet(f"font-size:13px;font-weight:600;color:{t.text};")
         v.addWidget(title)
 
         grid = QGridLayout(); grid.setSpacing(10)
@@ -356,6 +381,23 @@ class OverlayWidget(QWidget):
         self._build()
         if was:
             self._clamp(); self.show()
+
+    def refresh_theme(self):
+        """Re-pull colors from AppTheme after a theme switch.
+
+        _build() bakes the current accent into the label stylesheets once;
+        paintEvent() re-reads _theme() every paint, but nothing schedules a
+        repaint on its own after AppTheme.apply() runs. Call this from
+        MainWindow's theme-change handler so the overlay doesn't stay on
+        the old theme's colors until the next unrelated repaint.
+        """
+        was = self.isVisible()
+        self.hide()
+        self._build()
+        if was:
+            self._clamp(); self.show()
+        else:
+            self.update()
 
     def update_info(self, name: str, time_str: str, countdown: str):
         self._name      = name
