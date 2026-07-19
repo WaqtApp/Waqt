@@ -42,6 +42,40 @@ class AppTheme:
     row_bg   = "#0b1410"
     name     = "Dark Green"
 
+    # ── Style profile: SHAPE, independent of color ──────────────────────────
+    # Color themes (THEMES dict) answer "what hue". Style answers "how round,
+    # how thick, how loud". Two axes, so any color theme can pair with either
+    # style without a combinatorial explosion of presets.
+    style = "minimal"   # "minimal" (Apple-ish) | "playful" (One UI-ish)
+
+    STYLE_PROFILES = {
+        "minimal": {
+            "card_radius":     16,
+            "progress_h":      2,
+            "progress_radius": 1,
+            "badge_pill":      False,   # small dot + uppercase label
+            "row_radius":      10,
+            "border_alpha":    55,      # thin hairline border on cards
+        },
+        "playful": {
+            "card_radius":     26,
+            "progress_h":      8,
+            "progress_radius": 4,
+            "badge_pill":      True,    # filled rounded badge
+            "row_radius":      18,
+            "border_alpha":    0,       # no hairline — flat filled shapes instead
+        },
+    }
+
+    @classmethod
+    def shape(cls, key: str):
+        return cls.STYLE_PROFILES.get(cls.style, cls.STYLE_PROFILES["minimal"])[key]
+
+    @classmethod
+    def apply_style(cls, style_name: str) -> None:
+        if style_name in cls.STYLE_PROFILES:
+            cls.style = style_name
+
     @classmethod
     def apply(cls, colors: dict, name: str = "") -> None:
         cls.bg      = colors.get("bg",      cls.bg)
@@ -56,6 +90,20 @@ class AppTheme:
         col = QColor(hex_)
         col.setAlpha(alpha)
         return col
+
+    @classmethod
+    def accent_qcolor(cls, alpha: int = 255) -> QColor:
+        """QColor for the current accent, given alpha — use in paintEvent
+        instead of hardcoding QColor(29, 158, 117, alpha)."""
+        return cls.c(cls.accent, alpha)
+
+    @classmethod
+    def accent_rgba(cls, alpha: float) -> str:
+        """CSS 'rgba(r,g,b,a)' string for the current accent, given alpha
+        as a 0.0-1.0 float — use in QSS f-strings instead of hardcoding
+        'rgba(29,158,117,0.10)', which silently ignores the color theme."""
+        col = QColor(cls.accent)
+        return f"rgba({col.red()},{col.green()},{col.blue()},{alpha})"
 
     @staticmethod
     def font(size: int, weight=QFont.Weight.Normal, family: str = "Segoe UI") -> QFont:
@@ -266,11 +314,11 @@ T: dict[str, dict] = {
         # Sidebar labels
         "sidebar_settings": "Настройки",
         "sidebar_overlay":  "Оверлей",
-        "sidebar_alerts":   "Алерты",
+        "sidebar_alerts":   "Уведомления",
         "sidebar_calendar": "Календарь",
         "sidebar_themes":   "Темы",
         # Panel headers
-        "panel_alerts":    "АЛЕРТЫ",
+        "panel_alerts":    "Уведомления",
         "panel_overlay":   "ОВЕРЛЕЙ",
         "panel_style":     "СТИЛЬ",
         "panel_calendar":  "КАЛЕНДАРЬ",

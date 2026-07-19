@@ -81,15 +81,16 @@ class _SoundCard(QWidget):
         p = QPainter(self); p.setRenderHint(QPainter.RenderHint.Antialiasing)
         w, h = self.width(), self.height()
         if self._active:
-            p.setBrush(QBrush(QColor(29, 158, 117, 22)))
-            p.setPen(QPen(QColor(29, 158, 117, 100), 0.8))
+            p.setBrush(QBrush(AppTheme.accent_qcolor(22)))
+            p.setPen(QPen(AppTheme.accent_qcolor(100), 0.8))
         elif self._hover:
             p.setBrush(QBrush(QColor(255, 255, 255, 8)))
             p.setPen(QPen(QColor(255, 255, 255, 20), 0.5))
         else:
             p.setBrush(QBrush(QColor(255, 255, 255, 4)))
             p.setPen(QPen(QColor(255, 255, 255, 10), 0.5))
-        p.drawRoundedRect(0, 0, w, h, 10, 10)
+        r = AppTheme.shape("row_radius")
+        p.drawRoundedRect(0, 0, w, h, r, r)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -200,9 +201,9 @@ class AlertsPanel(QWidget):
         self._custom_btn.setFixedHeight(30)
         self._custom_btn.setStyleSheet(f"""
             QPushButton{{background:transparent;color:{AppTheme.accent};
-                border:1px solid rgba(29,158,117,0.3);border-radius:8px;
+                border:1px solid {AppTheme.accent_rgba(0.3)};border-radius:{AppTheme.shape('row_radius')}px;
                 font-size:11px;text-align:left;padding-left:10px;}}
-            QPushButton:hover{{background:rgba(29,158,117,0.08);}}""")
+            QPushButton:hover{{background:{AppTheme.accent_rgba(0.08)};}}""")
         self._custom_btn.clicked.connect(self._pick_custom_sound)
         cr.addWidget(self._custom_btn)
         v.addWidget(self._custom_row)
